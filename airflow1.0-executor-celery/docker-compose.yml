@@ -1,0 +1,104 @@
+version: '3.7'
+services:
+    redis:
+        image: redis
+
+    postgres:
+        image: postgres:12
+        environment:
+            - POSTGRES_USER=airflow
+            - POSTGRES_PASSWORD=airflow
+            - POSTGRES_DB=airflow
+        logging:
+            options:
+                max-size: 10m
+                max-file: "3"
+        ports:
+            - "5432:5432"
+
+    webserver:
+        # build:
+        #     context: .
+        #     args:
+        #         AIRFLOW_DEPS: "google_auth"
+        image: airflow-celery
+        restart: always
+        depends_on:
+            - postgres
+            - redis
+        environment:
+            - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+psycopg2://airflow:airflow@postgres:5432
+            - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/1
+            - AIRFLOW__CORE__LOAD_EXAMPLES=True
+            - AIRFLOW__WEBSERVER__RBAC=True
+        logging:
+            options:
+                max-size: 10m
+                max-file: "3"
+        volumes:
+            - ./dags:/usr/local/airflow/dags
+            # - ./plugins:/usr/local/airflow/plugins
+        ports:
+            - "8080:8080"
+        command: webserver
+        healthcheck:
+            test: ["CMD-SHELL", "[ -f /usr/local/airflow/airflow-webserver.pid ]"]
+            interval: 30s
+            timeout: 30s
+            retries: 3
+    
+    flower:
+        image: airflow-celery
+        restart: always
+        depends_on:
+            - redis
+        environment:
+            - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+psycopg2://airflow:airflow@postgres:5432
+            - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/1
+            - AIRFLOW__CORE__LOAD_EXAMPLES=True
+            - AIRFLOW__WEBSERVER__RBAC=True
+        ports:
+            - "5555:5555"
+        command: flower
+
+    scheduler:
+        image: airflow-celery
+        restart: always
+        depends_on:
+            - webserver
+        volumes:
+            - ./dags:/usr/local/airflow/dags
+            # Uncomment to include custom plugins
+            # - ./plugins:/usr/local/airflow/plugins
+        environment:
+            - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+            - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+psycopg2://airflow:airflow@postgres:5432
+            - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/1
+            - AIRFLOW__CORE__LOAD_EXAMPLES=True
+            - AIRFLOW__WEBSERVER__RBAC=True
+        command: scheduler
+
+    worker:
+        image: airflow-celery
+        restart: always
+        depends_on:
+            - scheduler
+        volumes:
+            - ./dags:/usr/local/airflow/dags
+            # Uncomment to include custom plugins
+            # - ./plugins:/usr/local/airflow/plugins
+        environment:
+            - FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+            - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+            - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+psycopg2://airflow:airflow@postgres:5432
+            - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/1
+            - AIRFLOW__CORE__LOAD_EXAMPLES=True
+            - AIRFLOW__WEBSERVER__RBAC=True
+        command: worker
